@@ -1,0 +1,4 @@
+mitigation-detector
+*.o
+.*.swp
+*~
