@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdint.h>
@@ -45,6 +46,8 @@ static unsigned int str_to_uint(const char *str, int *err)
         return 0;
     }
     *err = 0;
+    assert(num > 0);
+    assert(num <= UINT_MAX);
     return (unsigned int) num;
 }
 
@@ -84,6 +87,7 @@ static void get_args(int argc, char **argv)
     if (optind != argc) {
         usage(argv[0]);
     }
+    assert(args.opts &= OPTS_TEST_ALL);
 }
 
 static void seed_rng(void)
