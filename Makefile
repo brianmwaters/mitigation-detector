@@ -5,7 +5,7 @@ SH = /bin/sh
 
 CC = clang
 CFLAGS = -std=gnu99 -D_XOPEN_SOURCE=700 -DNDEBUG -Wall -Wextra -O3
-LDFLAGS = -z noexecstack
+LDFLAGS = -Wl,-z,noexecstack
 
 TARGETS = mitigation-detector
 
