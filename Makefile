@@ -4,7 +4,7 @@ SH = /bin/sh
 .PREFIX: .o .s .c
 
 CC = clang
-CFLAGS = -std=gnu11 -D_XOPEN_SOURCE=700 -DNDEBUG -Wall -Wextra -O3
+CFLAGS = -std=gnu99 -D_XOPEN_SOURCE=700 -DNDEBUG -Wall -Wextra -O3
 LDFLAGS = -z noexecstack
 
 TARGETS = mitigation-detector

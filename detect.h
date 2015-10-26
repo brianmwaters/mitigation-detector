@@ -1,7 +1,7 @@
 #ifndef _DETECT_H
 #define _DETECT_H
 
-#include <stdbool.h>
+#include "util.h"
 
 bool detect_stack_exec_prevent(void);
 

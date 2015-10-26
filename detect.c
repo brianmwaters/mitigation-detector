@@ -1,6 +1,5 @@
 #include <errno.h>
 #include <inttypes.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -74,7 +73,7 @@ static bool execute_data(void)
     return call_shellcode(shellcode_master);
 }
 
-static bool fork_and_test(bool(*test) (void))
+static bool fork_and_test(bool (*test)(void))
 {
     bool executed; // whether the shellcode successfully executed
     pid_t fpid, wpid;

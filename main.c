@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdnoreturn.h>
 #include <time.h>
 
 #include <unistd.h>
@@ -27,7 +26,7 @@ static struct {
                        OPT_TEST_HEAP_EXEC_PREVENT | \
                        OPT_TEST_DATA_EXEC_PREVENT)
 
-static noreturn void usage(const char *name)
+static void usage(const char *name)
 {
     fprintf(stderr, "Usage: %s: [-r seed] [-s] [-h] [-d]\n", name);
     exit(2);

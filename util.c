@@ -1,14 +1,12 @@
 #include <errno.h>
 #include <stdarg.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdnoreturn.h>
 #include <string.h>
 
 #include "util.h"
 
-noreturn void fail(const char *msg, int err)
+void fail(const char *msg, int err)
 {
     char *err_msg;
 
