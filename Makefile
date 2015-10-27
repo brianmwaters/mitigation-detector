@@ -23,4 +23,4 @@ mitigation-detector : main.o detect.o shellcode.o util.o
 
 .PHONY: clean
 clean :
-	rm -rf $(TARGETS) *.o
+	rm -rf $(TARGETS) *.o *.core
