@@ -9,6 +9,6 @@ shellcode_master:
 
 shellcode_master_end:
 
-.align 4
+.align 8
 shellcode_size:
 	.int shellcode_master_end - shellcode_master
