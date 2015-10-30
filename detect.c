@@ -36,6 +36,8 @@ static bool call_shellcode(const char *shellcode)
           [op_b] "rm" (op_b),
           [shellcode] "rm" (shellcode)
         : "rdi", "rsi", "rax");
+#else
+#error platform not supported
 #endif
     DEBUG("result:\t%" PRIu32, result);
     return result == sum;
