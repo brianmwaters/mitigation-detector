@@ -46,34 +46,34 @@ static bool call_shellcode(const char *shellcode)
 
 static bool execute_stack(void)
 {
-    char shellcode[shellcode_size];
+    char shellcode_stack[shellcode_size];
 
     DEBUG("Testing non-executable stack");
-    memcpy(shellcode, shellcode_master, shellcode_size);
-    return call_shellcode(shellcode);
+    memcpy(shellcode_stack, shellcode_data, shellcode_size);
+    return call_shellcode(shellcode_stack);
 }
 
 static bool execute_heap(void)
 {
-    char *shellcode;
+    char *shellcode_heap;
     bool result;
 
     DEBUG("Testing non-executable heap");
-    shellcode = malloc(shellcode_size);
-    if (shellcode == NULL) {
+    shellcode_heap = malloc(shellcode_size);
+    if (shellcode_heap == NULL) {
         perror("Error allocating memory");
         exit(EXIT_FAILURE);
     }
-    memcpy(shellcode, shellcode_master, shellcode_size);
-    result = call_shellcode(shellcode);
-    free(shellcode);
+    memcpy(shellcode_heap, shellcode_data, shellcode_size);
+    result = call_shellcode(shellcode_heap);
+    free(shellcode_heap);
     return result;
 }
 
 static bool execute_data(void)
 {
     DEBUG("Testing non-executable .data segment");
-    return call_shellcode(shellcode_master);
+    return call_shellcode(shellcode_data);
 }
 
 static bool fork_and_test(bool (*test)(void))
@@ -106,8 +106,7 @@ static bool fork_and_test(bool (*test)(void))
         }
         return !executed;
     } else if (fpid == 0) {
-        executed = test();
-        if (executed) {
+        if (test()) {
             exit(EXIT_SUCCESS);
         } else {
             exit(EXIT_FAILURE);

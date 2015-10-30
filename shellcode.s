@@ -1,14 +1,14 @@
-.global shellcode_master
+.global shellcode_data
 .global shellcode_size
 
 .data
-shellcode_master:
+shellcode_data:
 	mov	%edi, %eax
 	add	%esi, %eax
 	ret
 
-shellcode_master_end:
+	_shellcode_size = . - shellcode_data
 
 .align 8
 shellcode_size:
-	.int shellcode_master_end - shellcode_master
+	.quad _shellcode_size

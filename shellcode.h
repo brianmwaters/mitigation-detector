@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-extern const char shellcode_master[];
+extern const char shellcode_data[];
 extern const uint32_t shellcode_size;
 
 #endif
