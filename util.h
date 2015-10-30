@@ -9,11 +9,6 @@
 #define DEBUG(fmt, ...) {}
 #endif
 
-typedef enum {
-    true = 1,
-    false = 0
-} bool;
-
 void fail(const char *msg, int err);
 
 #endif
