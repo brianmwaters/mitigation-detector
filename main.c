@@ -13,23 +13,13 @@
 #include "util.h"
 
 static struct {
-    unsigned int opts;
-    uint32_t rng_seed;
-} args;
-
-#define OPT_RNG_SEED                0x01
-#define OPT_TEST_STACK_EXEC_PREVENT 0x02
-#define OPT_TEST_HEAP_EXEC_PREVENT  0x04
-#define OPT_TEST_DATA_EXEC_PREVENT  0x08
-
-#define OPTS_NONE 0x00
-#define OPTS_TEST_ALL (OPT_TEST_STACK_EXEC_PREVENT | \
-                       OPT_TEST_HEAP_EXEC_PREVENT | \
-                       OPT_TEST_DATA_EXEC_PREVENT)
+    bool opt_rng_seed;
+    unsigned int arg_rng_seed;
+} opts;
 
 static void usage(const char *name)
 {
-    fprintf(stderr, "Usage: %s: [-r seed] [-s] [-h] [-d]\n", name);
+    fprintf(stderr, "Usage: %s: [-r seed]\n", name);
     exit(2);
 }
 
@@ -45,49 +35,35 @@ static unsigned int str_to_uint(const char *str, int *err)
         *err = errno;
         return 0;
     }
-    *err = 0;
     assert(num > 0);
     assert(num <= UINT_MAX);
+    *err = 0;
     return (unsigned int) num;
 }
 
-static void get_args(int argc, char **argv)
+static void get_opts(int argc, char **argv)
 {
     int opt;
     int err;
 
-    args.opts = 0;
+    opts.opt_rng_seed = false;
     opterr = 0; // suppress getopt error messages. see getopt(3)
-    while ((opt = getopt(argc, argv, "r:shd")) != -1) {
+    while ((opt = getopt(argc, argv, "r:")) != -1) {
         switch ((char) opt) {
         case 'r':
-            args.opts |= OPT_RNG_SEED;
-            args.rng_seed = str_to_uint(optarg, &err);
+            opts.opt_rng_seed = true;
+            opts.arg_rng_seed = str_to_uint(optarg, &err);
             if (err != 0) {
                 usage(argv[0]);
             }
-            break;
-        case 's':
-            args.opts |= OPT_TEST_STACK_EXEC_PREVENT;
-            break;
-        case 'h':
-            args.opts |= OPT_TEST_HEAP_EXEC_PREVENT;
-            break;
-        case 'd':
-            args.opts |= OPT_TEST_DATA_EXEC_PREVENT;
             break;
         default:
             usage(argv[0]);
         }
     }
-    // if no tests are specified, assume we want all of them
-    if ((args.opts & OPTS_TEST_ALL) == OPTS_NONE) {
-        args.opts |= OPTS_TEST_ALL;
-    }
     if (optind != argc) {
         usage(argv[0]);
     }
-    assert(args.opts &= OPTS_TEST_ALL);
 }
 
 static void seed_rng(void)
@@ -95,8 +71,8 @@ static void seed_rng(void)
     unsigned int seed;
     time_t cur;
 
-    if (args.opts & OPT_RNG_SEED) {
-        seed = args.rng_seed;
+    if (opts.opt_rng_seed) {
+        seed = opts.arg_rng_seed;
     } else {
         cur = time(NULL);
         if (cur == -1) {
@@ -124,18 +100,12 @@ static bool detect_mitigations(void)
 {
     bool result = true;
 
-    if (args.opts & OPT_TEST_STACK_EXEC_PREVENT) {
-        result &= detect_and_display(detect_stack_exec_prevent,
-                "Stack segment execution prevention");
-    }
-    if (args.opts & OPT_TEST_HEAP_EXEC_PREVENT) {
-        result &= detect_and_display(detect_heap_exec_prevent,
-                "Heap segment execution prevention");
-    }
-    if (args.opts & OPT_TEST_DATA_EXEC_PREVENT) {
-        result &= detect_and_display(detect_data_exec_prevent,
-                "Data segment execution prevention");
-    }
+    result &= detect_and_display(detect_stack_exec_prevent,
+        "Stack segment execution prevention");
+    result &= detect_and_display(detect_heap_exec_prevent,
+        "Heap segment execution prevention");
+    result &= detect_and_display(detect_data_exec_prevent,
+        "Data segment execution prevention");
     return result;
 }
 
@@ -143,7 +113,7 @@ int main(int argc, char **argv)
 {
     bool result;
 
-    get_args(argc, argv);
+    get_opts(argc, argv);
     seed_rng();
     result = detect_mitigations();
     return result ? EXIT_SUCCESS : EXIT_FAILURE;
