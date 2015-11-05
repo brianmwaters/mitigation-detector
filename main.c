@@ -1,4 +1,4 @@
-#include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -28,15 +28,27 @@ static unsigned int str_to_uint(const char *str, int *err)
     long long num;
     char *end = NULL;
 
-    errno = 0;
-    num = strtoll(str, &end, 10);
-    if (errno != 0 || *end != '\0' || *str == '\0' ||
-            num < 0 || num > UINT_MAX) {
-        *err = errno;
+    if (isspace(str[0])) {
+        *err = EINVAL;
         return 0;
     }
-    assert(num > 0);
-    assert(num <= UINT_MAX);
+    // We use the signed version of strtoll to avoid silent negation of negative
+    // inputs (see strtoll(3)). This restricts our input to values less than
+    // LLONG_MAX, which may or may not be less than UINT_MAX. In practice, this
+    // means the user may be unable to set the most significant bit of the seed
+    // on platforms where sizeof (unsigned int) == sizeof (long long).
+    errno = 0;
+    num = strtoll(str, &end, 10);
+    if (errno != 0) {
+        *err = errno;
+        return 0;
+    } else if (end == str || *end != '\0') {
+        *err = EINVAL;
+        return 0;
+    } else if (num < 0 || num > UINT_MAX) {
+        *err = ERANGE;
+        return 0;
+    }
     *err = 0;
     return (unsigned int) num;
 }
