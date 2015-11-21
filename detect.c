@@ -26,7 +26,19 @@ static bool call_shellcode(const char *shellcode)
     DEBUG("op_b:\t%" PRIu32, op_b);
     sum = op_a + op_b;
     DEBUG("sum:\t%" PRIu32, sum);
-#if defined __GNUC__ && defined __amd64__
+#if defined __GNUC__ && defined __i386__
+    asm("push   %[op_a]\n\t"
+        "push   %[op_b]\n\t"
+        "mov    %[shellcode], %%eax\n\t"
+        "call   *%%eax\n\t"
+        "add    $8, %%esp\n\t"
+        "mov    %%eax, %[result]"
+        : [result] "=rm" (result)
+        : [op_a] "%rm" (op_a),
+          [op_b] "r" (op_b),
+          [shellcode] "r" (shellcode)
+        : "eax");
+#elif defined __GNUC__ && defined __amd64__
     asm("movl   %[op_a], %%edi\n\t"
         "movl   %[op_b], %%esi\n\t"
         "movq   %[shellcode], %%rax\n\t"
@@ -36,7 +48,7 @@ static bool call_shellcode(const char *shellcode)
         : [op_a] "%rm" (op_a),
           [op_b] "rm" (op_b),
           [shellcode] "rm" (shellcode)
-        : "rdi", "rsi", "rax");
+        : "rax", "rdi", "rsi");
 #else
 #error platform not supported
 #endif

@@ -1,7 +1,7 @@
 SH = /bin/sh
 
 .PREFIX:
-.PREFIX: .o .s .c
+.PREFIX: .o .S .c
 
 CC = clang
 CFLAGS = -std=gnu99 -D_XOPEN_SOURCE=700 -DNDEBUG -Wall -Wextra -O3
@@ -15,7 +15,7 @@ all : $(TARGETS)
 mitigation-detector : main.o detect.o shellcode.o util.o
 	$(CC) $(LDFLAGS) $^ -o $@
 
-%.o : %.s
+%.o : %.S
 	$(CC) -c $^ -o $@
 
 %.o : %.c
