@@ -22,7 +22,7 @@ events.
 #### What is currently implemented?
 
 Currently, mitigation-detector detects non-executable stack, heap, and data
-segments on x86-64 Linux systems.
+segments on i386 and x86-64 Linux systems.
 
 #### How does one use it?
 
