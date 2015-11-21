@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 
+// TODO: This use of ## w/ , is GCC-specific
 #ifndef NDEBUG
 #define DEBUG(fmt, ...) { fprintf(stderr, "DEBUG: " fmt "\n", ## __VA_ARGS__); }
 #else
