@@ -1,5 +1,6 @@
 mitigation-detector
-*.core
 *.o
+*.core
+core
 .*.swp
 *~
