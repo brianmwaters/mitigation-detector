@@ -78,30 +78,13 @@ static void get_opts(int argc, char **argv)
     }
 }
 
-static void seed_rng(void)
-{
-    unsigned int seed;
-    time_t cur;
-
-    if (opts.opt_rng_seed) {
-        seed = opts.arg_rng_seed;
-    } else {
-        cur = time(NULL);
-        if (cur == -1) {
-            fail("Could not get current time", 0);
-        }
-        seed = (unsigned int) cur;
-    }
-    srand(seed);
-}
-
 static bool detect_and_display(bool (*test)(void), const char *name)
 {
     bool result;
     int err;
 
     result = test();
-    err = printf("%s: %s\n", result ? "PASS" : "FAIL", name);
+    err = printf("%s: %s\n", result ? "PASS" : "VULN", name);
     if (err < 0) {
         fail("Error printing to stdout", errno);
     }
@@ -120,6 +103,14 @@ static bool detect_mitigations(void)
         "Data segment execution prevention");
     result &= detect_and_display(detect_bss_exec_prevent,
         "BSS segment execution prevention");
+    result &= detect_and_display(detect_stack_mprotect_restrict,
+        "Stack segment mprotect() restrictions");
+    result &= detect_and_display(detect_heap_mprotect_restrict,
+        "Heap segment mprotect() restrictons");
+    result &= detect_and_display(detect_data_mprotect_restrict,
+        "Data segment mprotect() restrictons");
+    result &= detect_and_display(detect_bss_mprotect_restrict,
+        "BSS segment mprotect() restrictons");
     return result;
 }
 
@@ -128,7 +119,11 @@ int main(int argc, char **argv)
     bool result;
 
     get_opts(argc, argv);
-    seed_rng();
+    if (opts.opt_rng_seed) {
+        setup_detections(&opts.arg_rng_seed);
+    } else {
+        setup_detections(NULL);
+    }
     result = detect_mitigations();
     return result ? EXIT_SUCCESS : EXIT_FAILURE;
 }

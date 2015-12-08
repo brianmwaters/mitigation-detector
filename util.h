@@ -10,6 +10,7 @@
 #define DEBUG(fmt, ...) {}
 #endif
 
+// TODO: This use of __attribute__ is GCC-specific
 void fail(const char *msg, int err) __attribute__ ((noreturn));
 
 #endif

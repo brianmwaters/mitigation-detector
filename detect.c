@@ -6,7 +6,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
+#include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -22,14 +24,51 @@
 #else
 #error platform not supported
 #endif
+#define SHELLCODE_SIZE (sizeof (SHELLCODE))
 
-static const size_t shellcode_size = sizeof (SHELLCODE);
+// TODO: Compilers aren't guaranteed to Do What You Mean here
+static char shellcode_data[SHELLCODE_SIZE] = SHELLCODE;
+static char shellcode_bss[SHELLCODE_SIZE];
 
-// Compilers aren't guaranteed to Do What You Mean here
-static char shellcode_data[shellcode_size] = SHELLCODE;
-static char shellcode_bss[shellcode_size];
+static size_t pagesize;
 
-static bool test_shellcode(const void *shellcode)
+static void seed_rng(unsigned int *arg)
+{
+    unsigned int seed;
+    time_t cur;
+
+    if (arg != NULL) {
+        seed = *arg;
+    } else {
+        cur = time(NULL);
+        if (cur == -1) {
+            fail("Could not get current time", 0);
+        }
+        seed = (unsigned int) cur;
+    }
+    srand(seed);
+}
+
+static void get_pagesize(void)
+{
+    long sc_ret;
+
+    sc_ret = sysconf(_SC_PAGESIZE);
+    if (sc_ret == -1) {
+        fail("Error getting page size", errno);
+    }
+    assert(sc_ret >= 0 && (unsigned long) sc_ret <= SIZE_MAX);
+    pagesize = sc_ret;
+}
+
+// call this before running any detections
+void setup_detections(unsigned int *rng_seed)
+{
+    seed_rng(rng_seed);
+    get_pagesize();
+}
+
+static bool test_exec(const void *shellcode)
 {
     uint32_t op_a, op_b;
     uint32_t sum; // the expected sum
@@ -71,6 +110,20 @@ static bool test_shellcode(const void *shellcode)
     return result == sum;
 }
 
+static bool test_mprotect(const void *buf)
+{
+    size_t size = SHELLCODE_SIZE;
+    void *page;
+    int ret;
+
+    page = (void *) ((size_t) buf & ~(pagesize - 1));
+	ret = mprotect(page, (buf - page) + size, PROT_READ|PROT_WRITE|PROT_EXEC);
+    if (ret == -1 && errno != EACCES) {
+        fail("Error calling mprotect()", errno);
+    }
+    return ret != -1;
+}
+
 static bool fork_and_test(bool test(const void *), const void *data)
 {
     bool executed; // whether the shellcode successfully executed
@@ -91,6 +144,7 @@ static bool fork_and_test(bool test(const void *), const void *data)
         wpid = wait(&status);
         if (wpid > 0) {
             executed = (status == EXIT_SUCCESS);
+    memcpy(shellcode_bss, shellcode_data, SHELLCODE_SIZE);
         } else if (wpid == -1 && errno == EINTR) {
             executed = false;
         } else {
@@ -110,11 +164,11 @@ static bool fork_and_test(bool test(const void *), const void *data)
 
 bool detect_stack_exec_prevent(void)
 {
-    char shellcode_stack[shellcode_size];
+    char shellcode_stack[SHELLCODE_SIZE];
 
     DEBUG("Testing non-executable stack");
-    memcpy(shellcode_stack, shellcode_data, shellcode_size);
-    return fork_and_test(test_shellcode, shellcode_stack);
+    memcpy(shellcode_stack, shellcode_data, SHELLCODE_SIZE);
+    return fork_and_test(test_exec, shellcode_stack);
 }
 
 bool detect_heap_exec_prevent(void)
@@ -123,12 +177,12 @@ bool detect_heap_exec_prevent(void)
     bool result;
 
     DEBUG("Testing non-executable heap");
-    shellcode_heap = malloc(shellcode_size);
+    shellcode_heap = malloc(SHELLCODE_SIZE);
     if (shellcode_heap == NULL) {
         fail("Error allocating memory", errno);
     }
-    memcpy(shellcode_heap, shellcode_data, shellcode_size);
-    result = fork_and_test(test_shellcode, shellcode_heap);
+    memcpy(shellcode_heap, shellcode_data, SHELLCODE_SIZE);
+    result = fork_and_test(test_exec, shellcode_heap);
     free(shellcode_heap);
     return result;
 }
@@ -136,12 +190,48 @@ bool detect_heap_exec_prevent(void)
 bool detect_data_exec_prevent(void)
 {
     DEBUG("Testing non-executable data segment");
-    return fork_and_test(test_shellcode, shellcode_data);
+    memcpy(shellcode_bss, shellcode_data, SHELLCODE_SIZE);
+    return fork_and_test(test_exec, shellcode_data);
 }
 
 bool detect_bss_exec_prevent(void)
 {
     DEBUG("Testing non-executable BSS segment");
-    memcpy(shellcode_bss, shellcode_data, shellcode_size);
-    return fork_and_test(test_shellcode, shellcode_bss);
+    memcpy(shellcode_bss, shellcode_data, SHELLCODE_SIZE);
+    return fork_and_test(test_exec, shellcode_bss);
+}
+
+bool detect_stack_mprotect_restrict(void)
+{
+    char shellcode_stack[SHELLCODE_SIZE];
+
+    DEBUG("Testing stack mprotect() restrictions");
+    return fork_and_test(test_mprotect, shellcode_stack);
+}
+
+bool detect_heap_mprotect_restrict(void)
+{
+    char *shellcode_heap;
+    bool result;
+
+    DEBUG("Testing heap mprotect() restrictions");
+    shellcode_heap = malloc(SHELLCODE_SIZE);
+    if (shellcode_heap == NULL) {
+        fail("Error allocating memory", errno);
+    }
+    result = fork_and_test(test_mprotect, shellcode_heap);
+    free(shellcode_heap);
+    return result;
+}
+
+bool detect_data_mprotect_restrict(void)
+{
+    DEBUG("Testing heap mprotect() restrictions");
+    return fork_and_test(test_mprotect, shellcode_data);
+}
+
+bool detect_bss_mprotect_restrict(void)
+{
+    DEBUG("Testing heap mprotect() restrictions");
+    return fork_and_test(test_mprotect, shellcode_bss);
 }

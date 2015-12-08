@@ -21,8 +21,9 @@ events.
 
 #### What is currently implemented?
 
-Currently, mitigation-detector detects non-executable stack, heap, data, and
-BSS segments on i386 and x86-64 Linux systems.
+Currently, mitigation-detector detects execution prevention and mprotect()
+restrictions for the stack, heap, data, and BSS segments on i386 and x86-64
+Linux.
 
 #### How does one use it?
 
