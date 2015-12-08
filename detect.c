@@ -189,7 +189,7 @@ bool detect_all(unsigned int *rng_seed)
     char *shellcode_bss_dlopen;
     void *shared_handle;
     char *dlerror_ret;
-   int ret;
+    int ret;
     bool result;
 
     setup_globals(rng_seed);
