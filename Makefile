@@ -5,7 +5,7 @@ SH = /bin/sh
 
 CC = clang
 CFLAGS = -std=gnu99 -Wall -Wextra -O3 -fPIE
-LDFLAGS = -Wl,-z,noexecstack, -Wl,-rpath=. -ldl
+LDFLAGS = -Wl,-z,noexecstack -Wl,-rpath=. -ldl
 
 TARGETS = mitigation-detector shared.so
 

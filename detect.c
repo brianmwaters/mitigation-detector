@@ -174,11 +174,11 @@ bool detect_all(unsigned int *rng_seed)
     char shellcode_stack[SHELLCODE_SIZE];
     char *shellcode_heap;
     char *shellcode_mmap;
-    char *shellcode_data_shared;
-    char *shellcode_bss_shared;
+    char *shellcode_data_dlopen;
+    char *shellcode_bss_dlopen;
     void *shared_handle;
     char *dlerror_ret;
-    int ret;
+   int ret;
     bool result;
 
     setup_globals(rng_seed);
@@ -201,7 +201,7 @@ bool detect_all(unsigned int *rng_seed)
         exit(EXIT_FAILURE);
     }
     dlerror();
-    shellcode_data_shared = dlsym(shared_handle, "shellcode_data_shared");
+    shellcode_data_dlopen = dlsym(shared_handle, "shellcode_data_dlopen");
     dlerror_ret = dlerror();
     if (dlerror_ret != NULL) {
         fprintf(stderr, "Error loading symbol from shared library: %s\n",
@@ -209,7 +209,7 @@ bool detect_all(unsigned int *rng_seed)
         exit(EXIT_FAILURE);
     }
     dlerror();
-    shellcode_bss_shared = dlsym(shared_handle, "shellcode_bss_shared");
+    shellcode_bss_dlopen = dlsym(shared_handle, "shellcode_bss_dlopen");
     dlerror_ret = dlerror();
     if (dlerror_ret != NULL) {
         fprintf(stderr, "Error loading symbol from shared library: %s\n",
@@ -219,39 +219,39 @@ bool detect_all(unsigned int *rng_seed)
     memcpy(shellcode_stack, SHELLCODE, SHELLCODE_SIZE);
     memcpy(shellcode_heap, SHELLCODE, SHELLCODE_SIZE);
     memcpy(shellcode_bss, SHELLCODE, SHELLCODE_SIZE);
+    memcpy(shellcode_bss_dlopen, SHELLCODE, SHELLCODE_SIZE);
     memcpy(shellcode_mmap, SHELLCODE, SHELLCODE_SIZE);
-    memcpy(shellcode_bss_shared, SHELLCODE, SHELLCODE_SIZE);
 
     // run the detections
     result = true;
-    result &= detect("Stack segment execution prevention",
+    result &= detect("stack segment execution prevention",
             test_exec, shellcode_stack);
-    result &= detect("Heap segment execution prevention",
+    result &= detect("heap segment execution prevention",
             test_exec, shellcode_heap);
-    result &= detect("Data segment execution prevention",
+    result &= detect("data segment execution prevention",
             test_exec, shellcode_data);
-    result &= detect("BSS segment execution prevention",
+    result &= detect("bss segment execution prevention",
             test_exec, shellcode_bss);
-    result &= detect("Mapped memory execution prevention",
+    result &= detect("dlopen()'ed data segment execution prevention",
+            test_exec, shellcode_data_dlopen);
+    result &= detect("dlopen()'ed bss segment execution prevention",
+            test_exec, shellcode_bss_dlopen);
+    result &= detect("mmap()'ed segment execution prevention",
             test_exec, shellcode_mmap);
-    result &= detect("Shared library data segment execution prevention",
-            test_exec, shellcode_data_shared);
-    result &= detect("Shared library BSS segment execution prevention",
-            test_exec, shellcode_bss_shared);
-    result &= detect("Stack segment mprotect() restrictions",
+    result &= detect("stack segment mprotect() restrictions",
             test_mprotect, shellcode_stack);
-    result &= detect("Heap segment mprotect() restrictions",
+    result &= detect("heap segment mprotect() restrictions",
             test_mprotect, shellcode_heap);
-    result &= detect("Data segment mprotect() restrictions",
+    result &= detect("data segment mprotect() restrictions",
             test_mprotect, shellcode_data);
-    result &= detect("BSS segment mprotect() restrictions",
+    result &= detect("bss segment mprotect() restrictions",
             test_mprotect, shellcode_bss);
-    result &= detect("Mapped memory mprotect() restrictions",
+    result &= detect("dlopen()'ed data segment mprotect() restrictions",
+            test_mprotect, shellcode_data_dlopen);
+    result &= detect("dlopen()'ed bss segment mprotect() restrictions",
+            test_mprotect, shellcode_bss_dlopen);
+    result &= detect("mmap()'ed segment mprotect() restrictions",
             test_mprotect, shellcode_mmap);
-    result &= detect("Shared library data segment mprotect() restrictions",
-            test_mprotect, shellcode_data_shared);
-    result &= detect("Shared library BSS segment mprotect() restrictions",
-            test_mprotect, shellcode_bss_shared);
 
     // tear down the various shellcode buffers
     free(shellcode_heap);
