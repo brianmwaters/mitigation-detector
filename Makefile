@@ -4,7 +4,7 @@ SH = /bin/sh
 .PREFIX: .o .c
 
 CC = clang
-CFLAGS = -std=gnu99 -Wall -Wextra -O3 -fPIE
+CFLAGS = -std=gnu99 -Wall -Wextra -O3 -fPIC
 LDFLAGS = -Wl,-z,noexecstack -Wl,-rpath=. -ldl
 
 TARGETS = mitigation-detector libdetect.so
