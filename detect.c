@@ -8,24 +8,14 @@
 #include <string.h>
 #include <time.h>
 
+#include <dlfcn.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "util.h"
+#include "shellcode.h"
 
 #include "detect.h"
-
-// Adds two 32-bit unsigned ints using the Linux calling convention for the
-// architecture
-#if defined __i386__
-#define SHELLCODE "\x8b\x44\x24\x04\x03\x44\x24\x08\xc3"
-#elif defined __amd64__
-#define SHELLCODE "\x89\xf8\x01\xf0\xc3"
-#else
-#error platform not supported
-#endif
-#define SHELLCODE_SIZE (sizeof (SHELLCODE))
 
 static size_t pagesize;
 
@@ -39,7 +29,8 @@ static size_t get_pagesize(void)
 
     sc_ret = sysconf(_SC_PAGESIZE);
     if (sc_ret == -1) {
-        fail("Error getting page size", errno);
+        perror("Error getting page size");
+        exit(EXIT_FAILURE);
     }
     assert(sc_ret >= 0 && (unsigned long) sc_ret <= SIZE_MAX);
     return sc_ret;
@@ -55,7 +46,8 @@ static void seed_rng(unsigned int *arg)
     } else {
         cur = time(NULL);
         if (cur == -1) {
-            fail("Could not get current time", 0);
+            fprintf(stderr, "Error getting current time");
+            exit(EXIT_FAILURE);
         }
         seed = (unsigned int) cur;
     }
@@ -63,7 +55,7 @@ static void seed_rng(unsigned int *arg)
 }
 
 // run this before running any detections
-static void setup_detections(unsigned int *rng_seed)
+static void setup_globals(unsigned int *rng_seed)
 {
     pagesize = get_pagesize();
     seed_rng(rng_seed);
@@ -77,10 +69,7 @@ static bool test_exec(const void *shellcode)
 
     op_a = (uint32_t) rand();
     op_b = (uint32_t) rand();
-    DEBUG("op_a:\t%" PRIu32, op_a);
-    DEBUG("op_b:\t%" PRIu32, op_b);
     sum = op_a + op_b;
-    DEBUG("sum:\t%" PRIu32, sum);
 #if defined __GNUC__ && defined __i386__
     asm("push   %[op_a]\n\t"
         "push   %[op_b]\n\t"
@@ -107,7 +96,6 @@ static bool test_exec(const void *shellcode)
 #else
 #error platform not supported
 #endif
-    DEBUG("result:\t%" PRIu32, result);
     return result == sum;
 }
 
@@ -120,7 +108,8 @@ static bool test_mprotect(const void *buf)
     page = (void *) ((size_t) buf & ~(pagesize - 1));
     ret = mprotect(page, (buf - page) + size, PROT_READ|PROT_WRITE|PROT_EXEC);
     if (ret == -1 && errno != EACCES) {
-        fail("Error calling mprotect()", errno);
+        perror("Error setting memory protection");
+        exit(EXIT_FAILURE);
     }
     return ret != -1;
 }
@@ -134,11 +123,13 @@ static bool fork_and_test(bool test(const void *), const void *data)
 
     err = fflush(stdout);
     if (err != 0) {
-        fail("Error flushing stdout", errno);
+        perror("Error flusing stdout");
+        exit(EXIT_FAILURE);
     }
     err = fflush(stderr);
     if (err != 0) {
-        fail("Error flushing stderr", errno);
+        perror("Error flusing stderr");
+        exit(EXIT_FAILURE);
     }
     fpid = fork();
     if (fpid > 0) {
@@ -148,7 +139,8 @@ static bool fork_and_test(bool test(const void *), const void *data)
         } else if (wpid == -1 && errno == EINTR) {
             executed = false;
         } else {
-            fail("Error waiting for child process", errno);
+            perror("Error waiting for child process");
+            exit(EXIT_FAILURE);
         }
         return !executed;
     } else if (fpid == 0) {
@@ -158,7 +150,8 @@ static bool fork_and_test(bool test(const void *), const void *data)
             exit(EXIT_FAILURE);
         }
     } else {
-        fail("Error spawning child process", errno);
+        perror("Error spawning child process");
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -170,7 +163,8 @@ static bool detect(const char *msg, bool test(const void *), const void *data)
     result = fork_and_test(test, data);
     ret = printf("%s: %s\n", result ? "PASS" : "VULN", msg);
     if (ret < 0) {
-        fail("Error printing to output file", errno);
+        perror("Error printing output");
+        exit(EXIT_FAILURE);
     }
     return result;
 }
@@ -180,25 +174,54 @@ bool detect_all(unsigned int *rng_seed)
     char shellcode_stack[SHELLCODE_SIZE];
     char *shellcode_heap;
     char *shellcode_mmap;
-    bool result;
+    char *shellcode_data_shared;
+    char *shellcode_bss_shared;
+    void *shared_handle;
+    char *dlerror_ret;
     int ret;
+    bool result;
 
-    // initialize stuff
-    setup_detections(rng_seed);
+    setup_globals(rng_seed);
+
     // set up the various shellcode buffers
     shellcode_heap = malloc(SHELLCODE_SIZE);
     if (shellcode_heap == NULL) {
-        fail("Error allocating memory", errno);
+        perror("Error allocating memory");
+        exit(EXIT_FAILURE);
     }
     shellcode_mmap = mmap(NULL, SHELLCODE_SIZE, PROT_READ|PROT_WRITE,
             MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (shellcode_mmap == MAP_FAILED) {
-        fail("Error mapping memory", errno);
+        perror("Error mapping memory");
+        exit(EXIT_FAILURE);
     }
-    memcpy(shellcode_stack, shellcode_data, SHELLCODE_SIZE);
-    memcpy(shellcode_heap, shellcode_data, SHELLCODE_SIZE);
-    memcpy(shellcode_bss, shellcode_data, SHELLCODE_SIZE);
-    memcpy(shellcode_mmap, shellcode_data, SHELLCODE_SIZE);
+    shared_handle = dlopen("./shared.so", RTLD_LAZY|RTLD_LOCAL);
+    if (shared_handle == NULL) {
+        fprintf(stderr, "Error opening shared library: %s\n", dlerror());
+        exit(EXIT_FAILURE);
+    }
+    dlerror();
+    shellcode_data_shared = dlsym(shared_handle, "shellcode_data_shared");
+    dlerror_ret = dlerror();
+    if (dlerror_ret != NULL) {
+        fprintf(stderr, "Error loading symbol from shared library: %s\n",
+                dlerror_ret);
+        exit(EXIT_FAILURE);
+    }
+    dlerror();
+    shellcode_bss_shared = dlsym(shared_handle, "shellcode_bss_shared");
+    dlerror_ret = dlerror();
+    if (dlerror_ret != NULL) {
+        fprintf(stderr, "Error loading symbol from shared library: %s\n",
+                dlerror_ret);
+        exit(EXIT_FAILURE);
+    }
+    memcpy(shellcode_stack, SHELLCODE, SHELLCODE_SIZE);
+    memcpy(shellcode_heap, SHELLCODE, SHELLCODE_SIZE);
+    memcpy(shellcode_bss, SHELLCODE, SHELLCODE_SIZE);
+    memcpy(shellcode_mmap, SHELLCODE, SHELLCODE_SIZE);
+    memcpy(shellcode_bss_shared, SHELLCODE, SHELLCODE_SIZE);
+
     // run the detections
     result = true;
     result &= detect("Stack segment execution prevention",
@@ -211,6 +234,10 @@ bool detect_all(unsigned int *rng_seed)
             test_exec, shellcode_bss);
     result &= detect("Mapped memory execution prevention",
             test_exec, shellcode_mmap);
+    result &= detect("Shared library data segment execution prevention",
+            test_exec, shellcode_data_shared);
+    result &= detect("Shared library BSS segment execution prevention",
+            test_exec, shellcode_bss_shared);
     result &= detect("Stack segment mprotect() restrictions",
             test_mprotect, shellcode_stack);
     result &= detect("Heap segment mprotect() restrictions",
@@ -221,12 +248,24 @@ bool detect_all(unsigned int *rng_seed)
             test_mprotect, shellcode_bss);
     result &= detect("Mapped memory mprotect() restrictions",
             test_mprotect, shellcode_mmap);
+    result &= detect("Shared library data segment mprotect() restrictions",
+            test_mprotect, shellcode_data_shared);
+    result &= detect("Shared library BSS segment mprotect() restrictions",
+            test_mprotect, shellcode_bss_shared);
+
     // tear down the various shellcode buffers
     free(shellcode_heap);
     ret = munmap(shellcode_mmap, SHELLCODE_SIZE);
     if (ret == -1) {
-        fail("Error unmapping page", errno);
+        perror("Error unmapping memory");
+        exit(EXIT_FAILURE);
     }
+    ret = dlclose(shared_handle);
+    if (ret != 0) {
+        fprintf(stderr, "Error closing shared library: %s\n", dlerror());
+        exit(EXIT_FAILURE);
+    }
+
     // return the result
     return result;
 }

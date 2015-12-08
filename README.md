@@ -22,8 +22,13 @@ events.
 #### What is currently implemented?
 
 Currently, mitigation-detector detects execution prevention and mprotect()
-restrictions for stack, heap, data, BSS, and memory-mapped segments on i386 and
-x86-64 Linux.
+restrictions for the following program segments:
+- stack
+- heap
+- data and bss
+- mapped memory
+- data and bss from shared libraries
+on i386 and x86-64 Linux.
 
 #### How does one use it?
 

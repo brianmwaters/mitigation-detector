@@ -9,7 +9,6 @@
 #include <unistd.h>
 
 #include "detect.h"
-#include "util.h"
 
 static struct {
     bool opt_rng_seed;
