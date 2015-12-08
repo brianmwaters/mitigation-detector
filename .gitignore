@@ -1,4 +1,5 @@
 mitigation-detector
+libdetect.so
 *.o
 *.core
 core
