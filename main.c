@@ -118,6 +118,8 @@ static bool detect_mitigations(void)
         "Heap segment execution prevention");
     result &= detect_and_display(detect_data_exec_prevent,
         "Data segment execution prevention");
+    result &= detect_and_display(detect_bss_exec_prevent,
+        "BSS segment execution prevention");
     return result;
 }
 

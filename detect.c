@@ -9,10 +9,23 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "shellcode.h"
 #include "util.h"
 
 #include "detect.h"
+
+// Adds two unsigned 32-bit ints using the Linux calling convention
+#if defined __i386__
+#define SHELLCODE "\x8b\x44\x24\x04\x03\x44\x24\x08\xc3"
+#elif defined __amd64__
+#define SHELLCODE "\x89\xf8\x01\xf0\xc3"
+#else
+#error platform not supported
+#endif
+
+static const size_t shellcode_size = sizeof (SHELLCODE);
+
+static char shellcode_data[shellcode_size] = SHELLCODE;
+static char shellcode_bss[shellcode_size];
 
 static bool test_shellcode(const void *shellcode)
 {
@@ -127,4 +140,11 @@ bool detect_data_exec_prevent(void)
 {
     DEBUG("Testing non-executable data segment");
     return fork_and_test(test_shellcode, shellcode_data);
+}
+
+bool detect_bss_exec_prevent(void)
+{
+    DEBUG("Testing non-executable BSS segment");
+    memcpy(shellcode_bss, shellcode_data, shellcode_size);
+    return fork_and_test(test_shellcode, shellcode_bss);
 }

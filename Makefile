@@ -12,11 +12,8 @@ TARGETS = mitigation-detector
 .PHONY: all
 all : $(TARGETS)
 
-mitigation-detector : main.o detect.o shellcode.o util.o
+mitigation-detector : main.o detect.o util.o
 	$(CC) $(LDFLAGS) $^ -o $@
-
-%.o : %.S
-	$(CC) -c $^ -o $@
 
 %.o : %.c
 	$(CC) -c $(CFLAGS) $^ -o $@

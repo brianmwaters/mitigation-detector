@@ -9,4 +9,6 @@ bool detect_heap_exec_prevent(void);
 
 bool detect_data_exec_prevent(void);
 
+bool detect_bss_exec_prevent(void);
+
 #endif
