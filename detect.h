@@ -4,6 +4,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-bool detect_all(unsigned int *rng_seed, FILE *outfile);
+bool detect_all(unsigned int *rng_seed);
 
 #endif

@@ -75,8 +75,8 @@ static bool test_exec(const void *shellcode)
     uint32_t sum; // the expected sum
     uint32_t result; // the actual sum
 
-    op_a = (uint32_t)rand();
-    op_b = (uint32_t)rand();
+    op_a = (uint32_t) rand();
+    op_b = (uint32_t) rand();
     DEBUG("op_a:\t%" PRIu32, op_a);
     DEBUG("op_b:\t%" PRIu32, op_b);
     sum = op_a + op_b;
@@ -118,7 +118,7 @@ static bool test_mprotect(const void *buf)
     int ret;
 
     page = (void *) ((size_t) buf & ~(pagesize - 1));
-	ret = mprotect(page, (buf - page) + size, PROT_READ|PROT_WRITE|PROT_EXEC);
+    ret = mprotect(page, (buf - page) + size, PROT_READ|PROT_WRITE|PROT_EXEC);
     if (ret == -1 && errno != EACCES) {
         fail("Error calling mprotect()", errno);
     }
@@ -137,7 +137,7 @@ static bool fork_and_test(bool test(const void *), const void *data)
         fail("Error flushing stdout", errno);
     }
     err = fflush(stderr);
-    if (err  != 0) {
+    if (err != 0) {
         fail("Error flushing stderr", errno);
     }
     fpid = fork();
@@ -162,21 +162,20 @@ static bool fork_and_test(bool test(const void *), const void *data)
     }
 }
 
-static bool detect(bool test(const void *), const void *data,
-        FILE *outfile, const char *message)
+static bool detect(const char *msg, bool test(const void *), const void *data)
 {
     bool result;
     int ret;
 
     result = fork_and_test(test, data);
-    ret = fprintf(outfile, "%s: %s\n", result ? "PASS" : "VULN", message);
+    ret = printf("%s: %s\n", result ? "PASS" : "VULN", msg);
     if (ret < 0) {
         fail("Error printing to output file", errno);
     }
     return result;
 }
 
-bool detect_all(unsigned int *rng_seed, FILE *outfile)
+bool detect_all(unsigned int *rng_seed)
 {
     char shellcode_stack[SHELLCODE_SIZE];
     char *shellcode_heap;
@@ -202,16 +201,26 @@ bool detect_all(unsigned int *rng_seed, FILE *outfile)
     memcpy(shellcode_mmap, shellcode_data, SHELLCODE_SIZE);
     // run the detections
     result = true;
-    result &= detect(test_exec, shellcode_stack, outfile, "Stack segment execution prevention");
-    result &= detect(test_exec, shellcode_heap, outfile, "Heap segment execution prevention");
-    result &= detect(test_exec, shellcode_data, outfile, "Data segment execution prevention");
-    result &= detect(test_exec, shellcode_bss, outfile, "BSS segment execution prevention");
-    result &= detect(test_exec, shellcode_mmap, outfile, "Mapped memory execution prevention");
-    result &= detect(test_mprotect, shellcode_stack, outfile, "Stack segment mprotect() restrictions");
-    result &= detect(test_mprotect, shellcode_heap, outfile, "Heap segment mprotect() restrictions");
-    result &= detect(test_mprotect, shellcode_data, outfile, "Data segment mprotect() restrictions");
-    result &= detect(test_mprotect, shellcode_bss, outfile, "BSS segment mprotect() restrictions");
-    result &= detect(test_mprotect, shellcode_mmap, outfile, "Mapped memory mprotect() restrictions");
+    result &= detect("Stack segment execution prevention",
+            test_exec, shellcode_stack);
+    result &= detect("Heap segment execution prevention",
+            test_exec, shellcode_heap);
+    result &= detect("Data segment execution prevention",
+            test_exec, shellcode_data);
+    result &= detect("BSS segment execution prevention",
+            test_exec, shellcode_bss);
+    result &= detect("Mapped memory execution prevention",
+            test_exec, shellcode_mmap);
+    result &= detect("Stack segment mprotect() restrictions",
+            test_mprotect, shellcode_stack);
+    result &= detect("Heap segment mprotect() restrictions",
+            test_mprotect, shellcode_heap);
+    result &= detect("Data segment mprotect() restrictions",
+            test_mprotect, shellcode_data);
+    result &= detect("BSS segment mprotect() restrictions",
+            test_mprotect, shellcode_bss);
+    result &= detect("Mapped memory mprotect() restrictions",
+            test_mprotect, shellcode_mmap);
     // tear down the various shellcode buffers
     free(shellcode_heap);
     ret = munmap(shellcode_mmap, SHELLCODE_SIZE);

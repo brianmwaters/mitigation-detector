@@ -82,6 +82,6 @@ int main(int argc, char **argv)
     bool result;
 
     get_opts(argc, argv);
-    result = detect_all(opts.opt_rng_seed ? &opts.arg_rng_seed : NULL, stdout);
+    result = detect_all(opts.opt_rng_seed ? &opts.arg_rng_seed : NULL);
     return result ? EXIT_SUCCESS : EXIT_FAILURE;
 }
