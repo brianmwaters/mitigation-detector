@@ -14,7 +14,7 @@
 
 #include "detect.h"
 
-static bool call_shellcode(const char *shellcode)
+static bool test_shellcode(const void *shellcode)
 {
     uint32_t op_a, op_b;
     uint32_t sum; // the expected sum
@@ -33,7 +33,7 @@ static bool call_shellcode(const char *shellcode)
         "call   *%%eax\n\t"
         "add    $8, %%esp\n\t"
         "mov    %%eax, %[result]"
-        : [result] "=rm" (result)
+        : [result] "=rm" (result))
         : [op_a] "%rm" (op_a),
           [op_b] "r" (op_b),
           [shellcode] "r" (shellcode)
@@ -56,39 +56,7 @@ static bool call_shellcode(const char *shellcode)
     return result == sum;
 }
 
-static bool execute_stack(void)
-{
-    char shellcode_stack[shellcode_size];
-
-    DEBUG("Testing non-executable stack");
-    memcpy(shellcode_stack, shellcode_data, shellcode_size);
-    return call_shellcode(shellcode_stack);
-}
-
-static bool execute_heap(void)
-{
-    char *shellcode_heap;
-    bool result;
-
-    DEBUG("Testing non-executable heap");
-    shellcode_heap = malloc(shellcode_size);
-    if (shellcode_heap == NULL) {
-        perror("Error allocating memory");
-        exit(EXIT_FAILURE);
-    }
-    memcpy(shellcode_heap, shellcode_data, shellcode_size);
-    result = call_shellcode(shellcode_heap);
-    free(shellcode_heap);
-    return result;
-}
-
-static bool execute_data(void)
-{
-    DEBUG("Testing non-executable .data segment");
-    return call_shellcode(shellcode_data);
-}
-
-static bool fork_and_test(bool (*test)(void))
+static bool fork_and_test(bool test(const void *), const void *data)
 {
     bool executed; // whether the shellcode successfully executed
     pid_t fpid, wpid;
@@ -118,7 +86,7 @@ static bool fork_and_test(bool (*test)(void))
         }
         return !executed;
     } else if (fpid == 0) {
-        if (test()) {
+        if (test(data)) {
             exit(EXIT_SUCCESS);
         } else {
             exit(EXIT_FAILURE);
@@ -131,15 +99,32 @@ static bool fork_and_test(bool (*test)(void))
 
 bool detect_stack_exec_prevent(void)
 {
-    return fork_and_test(execute_stack);
+    char shellcode_stack[shellcode_size];
+
+    DEBUG("Testing non-executable stack");
+    memcpy(shellcode_stack, shellcode_data, shellcode_size);
+    return fork_and_test(test_shellcode, shellcode_stack);
 }
 
 bool detect_heap_exec_prevent(void)
 {
-    return fork_and_test(execute_heap);
+    char *shellcode_heap;
+    bool result;
+
+    DEBUG("Testing non-executable heap");
+    shellcode_heap = malloc(shellcode_size);
+    if (shellcode_heap == NULL) {
+        perror("Error allocating memory");
+        exit(EXIT_FAILURE);
+    }
+    memcpy(shellcode_heap, shellcode_data, shellcode_size);
+    result = fork_and_test(test_shellcode, shellcode_heap);
+    free(shellcode_heap);
+    return result;
 }
 
 bool detect_data_exec_prevent(void)
 {
-    return fork_and_test(execute_data);
+    DEBUG("Testing non-executable data segment");
+    return fork_and_test(test_shellcode, shellcode_data);
 }
