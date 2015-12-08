@@ -24,6 +24,7 @@
 
 static const size_t shellcode_size = sizeof (SHELLCODE);
 
+// Compilers aren't guaranteed to Do What You Mean here
 static char shellcode_data[shellcode_size] = SHELLCODE;
 static char shellcode_bss[shellcode_size];
 
