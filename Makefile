@@ -7,15 +7,15 @@ CC = clang
 CFLAGS = -std=gnu99 -Wall -Wextra -O3 -fPIE
 LDFLAGS = -Wl,-z,noexecstack -Wl,-rpath=. -ldl
 
-TARGETS = mitigation-detector shared.so
+TARGETS = mitigation-detector libdetect.so
 
 .PHONY: all
 all : $(TARGETS)
 
-mitigation-detector : main.o detect.o shared.so
+mitigation-detector : main.o detect.o libdetect.so
 	$(CC) $(LDFLAGS) $^ -o $@
 
-shared.so : shared.o
+libdetect.so : detect.o
 	$(CC) -shared $(LDFLAGS) -Wl,-soname,$@ $^ -o $@
 
 %.o : %.c

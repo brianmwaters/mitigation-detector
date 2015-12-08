@@ -13,15 +13,26 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "shellcode.h"
-
 #include "detect.h"
+
+// Adds two 32-bit unsigned ints using the Linux calling convention for the
+// architecture
+#if defined __i386__
+#define SHELLCODE "\x8b\x44\x24\x04\x03\x44\x24\x08\xc3"
+#elif defined __amd64__
+#define SHELLCODE "\x89\xf8\x01\xf0\xc3"
+#else
+#error platform not supported
+#endif
+#define SHELLCODE_SIZE (sizeof (SHELLCODE))
 
 static size_t pagesize;
 
 // TODO: Compilers aren't guaranteed to Do What You Mean here
 static char shellcode_data[SHELLCODE_SIZE] = SHELLCODE;
 static char shellcode_bss[SHELLCODE_SIZE];
+char shellcode_data_dlopen[SHELLCODE_SIZE] = SHELLCODE;
+char shellcode_bss_dlopen[SHELLCODE_SIZE];
 
 static size_t get_pagesize(void)
 {
@@ -183,7 +194,7 @@ bool detect_all(unsigned int *rng_seed)
 
     setup_globals(rng_seed);
 
-    // set up the various shellcode buffers
+    // Set up various shellcode buffers
     shellcode_heap = malloc(SHELLCODE_SIZE);
     if (shellcode_heap == NULL) {
         perror("Error allocating memory");
@@ -195,7 +206,7 @@ bool detect_all(unsigned int *rng_seed)
         perror("Error mapping memory");
         exit(EXIT_FAILURE);
     }
-    shared_handle = dlopen("./shared.so", RTLD_LAZY|RTLD_LOCAL);
+    shared_handle = dlopen("./libdetect.so", RTLD_LAZY); // causes odr violation
     if (shared_handle == NULL) {
         fprintf(stderr, "Error opening shared library: %s\n", dlerror());
         exit(EXIT_FAILURE);
@@ -222,7 +233,7 @@ bool detect_all(unsigned int *rng_seed)
     memcpy(shellcode_bss_dlopen, SHELLCODE, SHELLCODE_SIZE);
     memcpy(shellcode_mmap, SHELLCODE, SHELLCODE_SIZE);
 
-    // run the detections
+    // Run the tests on the various shellcode buffers
     result = true;
     result &= detect("stack segment execution prevention",
             test_exec, shellcode_stack);
@@ -253,7 +264,7 @@ bool detect_all(unsigned int *rng_seed)
     result &= detect("mmap()'ed segment mprotect() restrictions",
             test_mprotect, shellcode_mmap);
 
-    // tear down the various shellcode buffers
+    // Tear down the various shellcode buffers
     free(shellcode_heap);
     ret = munmap(shellcode_mmap, SHELLCODE_SIZE);
     if (ret == -1) {
@@ -266,6 +277,6 @@ bool detect_all(unsigned int *rng_seed)
         exit(EXIT_FAILURE);
     }
 
-    // return the result
+    // Return the result
     return result;
 }
