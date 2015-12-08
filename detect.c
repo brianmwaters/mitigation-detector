@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdbool.h>
@@ -79,13 +80,11 @@ static bool fork_and_test(bool test(const void *), const void *data)
 
     err = fflush(stdout);
     if (err != 0) {
-        perror("Error flushing stdout");
-        exit(EXIT_FAILURE);
+        fail("Error flushing stdout", errno);
     }
     err = fflush(stderr);
     if (err != 0) {
-        perror("Error flushing stderr");
-        exit(EXIT_FAILURE);
+        fail("Error flushing stderr", errno);
     }
     fpid = fork();
     if (fpid > 0) {
@@ -95,8 +94,7 @@ static bool fork_and_test(bool test(const void *), const void *data)
         } else if (wpid == -1 && errno == EINTR) {
             executed = false;
         } else {
-            perror("Error waiting for child process");
-            exit(EXIT_FAILURE);
+            fail("Error waiting for child process", errno);
         }
         return !executed;
     } else if (fpid == 0) {
@@ -106,8 +104,7 @@ static bool fork_and_test(bool test(const void *), const void *data)
             exit(EXIT_FAILURE);
         }
     } else {
-        perror("Error spawning child process");
-        exit(EXIT_FAILURE);
+        fail("Error spawning child process", errno);
     }
 }
 
@@ -128,8 +125,7 @@ bool detect_heap_exec_prevent(void)
     DEBUG("Testing non-executable heap");
     shellcode_heap = malloc(shellcode_size);
     if (shellcode_heap == NULL) {
-        perror("Error allocating memory");
-        exit(EXIT_FAILURE);
+        fail("Error allocating memory", errno);
     }
     memcpy(shellcode_heap, shellcode_data, shellcode_size);
     result = fork_and_test(test_shellcode, shellcode_heap);

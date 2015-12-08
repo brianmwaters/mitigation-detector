@@ -10,6 +10,6 @@
 #define DEBUG(fmt, ...) {}
 #endif
 
-void fail(const char *msg, int err);
+void fail(const char *msg, int err) __attribute__ ((noreturn));
 
 #endif
