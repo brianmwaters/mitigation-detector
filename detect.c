@@ -16,7 +16,8 @@
 
 #include "detect.h"
 
-// Adds two unsigned 32-bit ints using the Linux calling convention
+// Adds two 32-bit unsigned ints using the Linux calling convention for the
+// architecture
 #if defined __i386__
 #define SHELLCODE "\x8b\x44\x24\x04\x03\x44\x24\x08\xc3"
 #elif defined __amd64__
@@ -26,11 +27,23 @@
 #endif
 #define SHELLCODE_SIZE (sizeof (SHELLCODE))
 
+static size_t pagesize;
+
 // TODO: Compilers aren't guaranteed to Do What You Mean here
 static char shellcode_data[SHELLCODE_SIZE] = SHELLCODE;
 static char shellcode_bss[SHELLCODE_SIZE];
 
-static size_t pagesize;
+static size_t get_pagesize(void)
+{
+    long sc_ret;
+
+    sc_ret = sysconf(_SC_PAGESIZE);
+    if (sc_ret == -1) {
+        fail("Error getting page size", errno);
+    }
+    assert(sc_ret >= 0 && (unsigned long) sc_ret <= SIZE_MAX);
+    return sc_ret;
+}
 
 static void seed_rng(unsigned int *arg)
 {
@@ -49,23 +62,11 @@ static void seed_rng(unsigned int *arg)
     srand(seed);
 }
 
-static void get_pagesize(void)
+// run this before running any detections
+static void setup_detections(unsigned int *rng_seed)
 {
-    long sc_ret;
-
-    sc_ret = sysconf(_SC_PAGESIZE);
-    if (sc_ret == -1) {
-        fail("Error getting page size", errno);
-    }
-    assert(sc_ret >= 0 && (unsigned long) sc_ret <= SIZE_MAX);
-    pagesize = sc_ret;
-}
-
-// call this before running any detections
-void setup_detections(unsigned int *rng_seed)
-{
+    pagesize = get_pagesize();
     seed_rng(rng_seed);
-    get_pagesize();
 }
 
 static bool test_exec(const void *shellcode)
@@ -136,7 +137,7 @@ static bool fork_and_test(bool test(const void *), const void *data)
         fail("Error flushing stdout", errno);
     }
     err = fflush(stderr);
-    if (err != 0) {
+    if (err  != 0) {
         fail("Error flushing stderr", errno);
     }
     fpid = fork();
@@ -144,7 +145,6 @@ static bool fork_and_test(bool test(const void *), const void *data)
         wpid = wait(&status);
         if (wpid > 0) {
             executed = (status == EXIT_SUCCESS);
-    memcpy(shellcode_bss, shellcode_data, SHELLCODE_SIZE);
         } else if (wpid == -1 && errno == EINTR) {
             executed = false;
         } else {
@@ -162,76 +162,62 @@ static bool fork_and_test(bool test(const void *), const void *data)
     }
 }
 
-bool detect_stack_exec_prevent(void)
+static bool detect(bool test(const void *), const void *data,
+        FILE *outfile, const char *message)
+{
+    bool result;
+    int ret;
+
+    result = fork_and_test(test, data);
+    ret = fprintf(outfile, "%s: %s\n", result ? "PASS" : "VULN", message);
+    if (ret < 0) {
+        fail("Error printing to output file", errno);
+    }
+    return result;
+}
+
+bool detect_all(unsigned int *rng_seed, FILE *outfile)
 {
     char shellcode_stack[SHELLCODE_SIZE];
+    char *shellcode_heap;
+    char *shellcode_mmap;
+    bool result;
+    int ret;
 
-    DEBUG("Testing non-executable stack");
+    // initialize stuff
+    setup_detections(rng_seed);
+    // set up the various shellcode buffers
+    shellcode_heap = malloc(SHELLCODE_SIZE);
+    if (shellcode_heap == NULL) {
+        fail("Error allocating memory", errno);
+    }
+    shellcode_mmap = mmap(NULL, SHELLCODE_SIZE, PROT_READ|PROT_WRITE,
+            MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+    if (shellcode_mmap == MAP_FAILED) {
+        fail("Error mapping memory", errno);
+    }
     memcpy(shellcode_stack, shellcode_data, SHELLCODE_SIZE);
-    return fork_and_test(test_exec, shellcode_stack);
-}
-
-bool detect_heap_exec_prevent(void)
-{
-    char *shellcode_heap;
-    bool result;
-
-    DEBUG("Testing non-executable heap");
-    shellcode_heap = malloc(SHELLCODE_SIZE);
-    if (shellcode_heap == NULL) {
-        fail("Error allocating memory", errno);
-    }
     memcpy(shellcode_heap, shellcode_data, SHELLCODE_SIZE);
-    result = fork_and_test(test_exec, shellcode_heap);
+    memcpy(shellcode_bss, shellcode_data, SHELLCODE_SIZE);
+    memcpy(shellcode_mmap, shellcode_data, SHELLCODE_SIZE);
+    // run the detections
+    result = true;
+    result &= detect(test_exec, shellcode_stack, outfile, "Stack segment execution prevention");
+    result &= detect(test_exec, shellcode_heap, outfile, "Heap segment execution prevention");
+    result &= detect(test_exec, shellcode_data, outfile, "Data segment execution prevention");
+    result &= detect(test_exec, shellcode_bss, outfile, "BSS segment execution prevention");
+    result &= detect(test_exec, shellcode_mmap, outfile, "Mapped memory execution prevention");
+    result &= detect(test_mprotect, shellcode_stack, outfile, "Stack segment mprotect() restrictions");
+    result &= detect(test_mprotect, shellcode_heap, outfile, "Heap segment mprotect() restrictions");
+    result &= detect(test_mprotect, shellcode_data, outfile, "Data segment mprotect() restrictions");
+    result &= detect(test_mprotect, shellcode_bss, outfile, "BSS segment mprotect() restrictions");
+    result &= detect(test_mprotect, shellcode_mmap, outfile, "Mapped memory mprotect() restrictions");
+    // tear down the various shellcode buffers
     free(shellcode_heap);
-    return result;
-}
-
-bool detect_data_exec_prevent(void)
-{
-    DEBUG("Testing non-executable data segment");
-    memcpy(shellcode_bss, shellcode_data, SHELLCODE_SIZE);
-    return fork_and_test(test_exec, shellcode_data);
-}
-
-bool detect_bss_exec_prevent(void)
-{
-    DEBUG("Testing non-executable BSS segment");
-    memcpy(shellcode_bss, shellcode_data, SHELLCODE_SIZE);
-    return fork_and_test(test_exec, shellcode_bss);
-}
-
-bool detect_stack_mprotect_restrict(void)
-{
-    char shellcode_stack[SHELLCODE_SIZE];
-
-    DEBUG("Testing stack mprotect() restrictions");
-    return fork_and_test(test_mprotect, shellcode_stack);
-}
-
-bool detect_heap_mprotect_restrict(void)
-{
-    char *shellcode_heap;
-    bool result;
-
-    DEBUG("Testing heap mprotect() restrictions");
-    shellcode_heap = malloc(SHELLCODE_SIZE);
-    if (shellcode_heap == NULL) {
-        fail("Error allocating memory", errno);
+    ret = munmap(shellcode_mmap, SHELLCODE_SIZE);
+    if (ret == -1) {
+        fail("Error unmapping page", errno);
     }
-    result = fork_and_test(test_mprotect, shellcode_heap);
-    free(shellcode_heap);
+    // return the result
     return result;
-}
-
-bool detect_data_mprotect_restrict(void)
-{
-    DEBUG("Testing heap mprotect() restrictions");
-    return fork_and_test(test_mprotect, shellcode_data);
-}
-
-bool detect_bss_mprotect_restrict(void)
-{
-    DEBUG("Testing heap mprotect() restrictions");
-    return fork_and_test(test_mprotect, shellcode_bss);
 }
