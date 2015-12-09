@@ -88,7 +88,7 @@ static bool test_exec(const void *shellcode)
         "call   *%%eax\n\t"
         "add    $8, %%esp\n\t"
         "mov    %%eax, %[result]"
-        : [result] "=rm" (result))
+        : [result] "=rm" (result)
         : [op_a] "%rm" (op_a),
           [op_b] "r" (op_b),
           [shellcode] "r" (shellcode)
