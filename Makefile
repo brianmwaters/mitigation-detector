@@ -12,7 +12,7 @@ TARGETS = mitigation-detector libdetect.so
 .PHONY: all
 all : $(TARGETS)
 
-mitigation-detector : main.o detect.o libdetect.so
+mitigation-detector : main.o libdetect.so
 	$(CC) $(LDFLAGS) $^ -o $@
 
 libdetect.so : detect.o
