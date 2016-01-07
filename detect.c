@@ -27,25 +27,13 @@
 #define SHELLCODE_SIZE (sizeof (SHELLCODE))
 
 static size_t pagesize;
+static void *libdetect_handle;
 
 // TODO: Compilers aren't guaranteed to Do What You Mean here
 static char shellcode_data[SHELLCODE_SIZE] = SHELLCODE;
 static char shellcode_bss[SHELLCODE_SIZE];
 char shellcode_data_dlopen[SHELLCODE_SIZE] = SHELLCODE;
 char shellcode_bss_dlopen[SHELLCODE_SIZE];
-
-static size_t get_pagesize(void)
-{
-    long sc_ret;
-
-    sc_ret = sysconf(_SC_PAGESIZE);
-    if (sc_ret == -1) {
-        perror("Error getting page size");
-        exit(EXIT_FAILURE);
-    }
-    assert(sc_ret >= 0 && (unsigned long) sc_ret <= SIZE_MAX);
-    return sc_ret;
-}
 
 static void seed_rng(unsigned int *arg)
 {
@@ -65,14 +53,92 @@ static void seed_rng(unsigned int *arg)
     srand(seed);
 }
 
-// run this before running any detections
-static void setup_globals(unsigned int *rng_seed)
+static size_t get_pagesize(void)
 {
-    pagesize = get_pagesize();
-    seed_rng(rng_seed);
+    long sc_ret;
+
+    sc_ret = sysconf(_SC_PAGESIZE);
+    if (sc_ret == -1) {
+        perror("Error getting page size");
+        exit(EXIT_FAILURE);
+    }
+    assert(sc_ret >= 0 && (unsigned long) sc_ret <= SIZE_MAX);
+    return sc_ret;
 }
 
-static bool test_exec(const void *shellcode)
+static void *get_libdetect_handle(void)
+{
+    void *libdetect_handle;
+
+    // causes odr violation
+    libdetect_handle = dlopen("./libdetect.so", RTLD_LAZY);
+    if (libdetect_handle == NULL) {
+        fprintf(stderr, "Error opening shared library: %s\n", dlerror());
+        exit(EXIT_FAILURE);
+    }
+    return libdetect_handle;
+}
+
+void setup_detections(unsigned int *rng_seed)
+{
+    seed_rng(rng_seed);
+    pagesize = get_pagesize();
+    libdetect_handle = get_libdetect_handle();
+}
+
+void teardown_detections(void)
+{
+    int ret;
+
+    ret = dlclose(libdetect_handle);
+    if (ret != 0) {
+        fprintf(stderr, "Error closing shared library: %s\n", dlerror());
+        exit(EXIT_FAILURE);
+    }
+}
+
+static bool fork_and_test(bool detect(const char *), const char *shellcode)
+{
+    bool executed; // whether the shellcode successfully executed
+    pid_t fpid, wpid;
+    int status;
+    int err;
+
+    err = fflush(stdout);
+    if (err != 0) {
+        perror("Error flusing stdout");
+        exit(EXIT_FAILURE);
+    }
+    err = fflush(stderr);
+    if (err != 0) {
+        perror("Error flusing stderr");
+        exit(EXIT_FAILURE);
+    }
+    fpid = fork();
+    if (fpid > 0) {
+        wpid = wait(&status);
+        if (wpid > 0) {
+            executed = (status == EXIT_SUCCESS);
+        } else if (wpid == -1 && errno == EINTR) {
+            executed = false;
+        } else {
+            perror("Error waiting for child process");
+            exit(EXIT_FAILURE);
+        }
+        return !executed;
+    } else if (fpid == 0) {
+        if (detect(shellcode)) {
+            exit(EXIT_SUCCESS);
+        } else {
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        perror("Error spawning child process");
+        exit(EXIT_FAILURE);
+    }
+}
+
+bool detect_exec_prevent(const char *shellcode)
 {
     uint32_t op_a, op_b;
     uint32_t sum; // the expected sum
@@ -110,14 +176,15 @@ static bool test_exec(const void *shellcode)
     return result == sum;
 }
 
-static bool test_mprotect(const void *buf)
+bool detect_mprotect_restrict(const char *shellcode)
 {
     size_t size = SHELLCODE_SIZE;
     void *page;
     int ret;
 
-    page = (void *) ((size_t) buf & ~(pagesize - 1));
-    ret = mprotect(page, (buf - page) + size, PROT_READ|PROT_WRITE|PROT_EXEC);
+    page = (void *) ((size_t) shellcode & ~(pagesize - 1));
+    ret = mprotect(page, ((void *)shellcode - page) + size,
+            PROT_READ|PROT_WRITE|PROT_EXEC);
     if (ret == -1 && errno != EACCES) {
         perror("Error setting memory protection");
         exit(EXIT_FAILURE);
@@ -125,158 +192,92 @@ static bool test_mprotect(const void *buf)
     return ret != -1;
 }
 
-static bool fork_and_test(bool test(const void *), const void *data)
-{
-    bool executed; // whether the shellcode successfully executed
-    pid_t fpid, wpid;
-    int status;
-    int err;
-
-    err = fflush(stdout);
-    if (err != 0) {
-        perror("Error flusing stdout");
-        exit(EXIT_FAILURE);
-    }
-    err = fflush(stderr);
-    if (err != 0) {
-        perror("Error flusing stderr");
-        exit(EXIT_FAILURE);
-    }
-    fpid = fork();
-    if (fpid > 0) {
-        wpid = wait(&status);
-        if (wpid > 0) {
-            executed = (status == EXIT_SUCCESS);
-        } else if (wpid == -1 && errno == EINTR) {
-            executed = false;
-        } else {
-            perror("Error waiting for child process");
-            exit(EXIT_FAILURE);
-        }
-        return !executed;
-    } else if (fpid == 0) {
-        if (test(data)) {
-            exit(EXIT_SUCCESS);
-        } else {
-            exit(EXIT_FAILURE);
-        }
-    } else {
-        perror("Error spawning child process");
-        exit(EXIT_FAILURE);
-    }
-}
-
-static bool detect(const char *msg, bool test(const void *), const void *data)
-{
-    bool result;
-    int ret;
-
-    result = fork_and_test(test, data);
-    ret = printf("%s: %s\n", result ? "PASS" : "VULN", msg);
-    if (ret < 0) {
-        perror("Error printing output");
-        exit(EXIT_FAILURE);
-    }
-    return result;
-}
-
-bool detect_all(unsigned int *rng_seed)
+bool test_stack(bool detect(const char *))
 {
     char shellcode_stack[SHELLCODE_SIZE];
+
+    memcpy(shellcode_stack, SHELLCODE, SHELLCODE_SIZE);
+    return fork_and_test(detect, shellcode_stack);
+}
+
+bool test_heap(bool detect(const char *))
+{
     char *shellcode_heap;
-    char *shellcode_mmap;
-    char *shellcode_data_dlopen;
-    char *shellcode_bss_dlopen;
-    void *shared_handle;
-    char *dlerror_ret;
-    int ret;
     bool result;
 
-    setup_globals(rng_seed);
-
-    // Set up various shellcode buffers
     shellcode_heap = malloc(SHELLCODE_SIZE);
     if (shellcode_heap == NULL) {
         perror("Error allocating memory");
         exit(EXIT_FAILURE);
     }
+    memcpy(shellcode_heap, SHELLCODE, SHELLCODE_SIZE);
+    result = fork_and_test(detect, shellcode_heap);
+    free(shellcode_heap);
+    return result;
+}
+
+bool test_data(bool detect(const char *))
+{
+    return fork_and_test(detect, shellcode_data);
+}
+
+bool test_bss(bool detect(const char *))
+{
+    memcpy(shellcode_bss, SHELLCODE, SHELLCODE_SIZE);
+    return fork_and_test(detect, shellcode_bss);
+}
+
+bool test_shlib_data(bool detect(const char *))
+{
+    char *shellcode_data_dlopen;
+    char *dlerror_ret;
+
+    dlerror();
+    shellcode_data_dlopen = dlsym(libdetect_handle, "shellcode_data_dlopen");
+    dlerror_ret = dlerror();
+    if (dlerror_ret != NULL) {
+        fprintf(stderr, "Error loading symbol from shared library: %s\n",
+                dlerror_ret);
+        exit(EXIT_FAILURE);
+    }
+    return fork_and_test(detect, shellcode_data_dlopen);
+}
+
+bool test_shlib_bss(bool detect(const char *))
+{
+    char *shellcode_bss_dlopen;
+    char *dlerror_ret;
+
+    dlerror();
+    shellcode_bss_dlopen = dlsym(libdetect_handle, "shellcode_bss_dlopen");
+    dlerror_ret = dlerror();
+    if (dlerror_ret != NULL) {
+        fprintf(stderr, "Error loading symbol from shared library: %s\n",
+                dlerror_ret);
+        exit(EXIT_FAILURE);
+    }
+    memcpy(shellcode_bss_dlopen, SHELLCODE, SHELLCODE_SIZE);
+    return fork_and_test(detect, shellcode_bss_dlopen);
+}
+
+bool test_mmap(bool detect(const char *))
+{
+    char *shellcode_mmap;
+    bool result;
+    int ret;
+
     shellcode_mmap = mmap(NULL, SHELLCODE_SIZE, PROT_READ|PROT_WRITE,
             MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (shellcode_mmap == MAP_FAILED) {
         perror("Error mapping memory");
         exit(EXIT_FAILURE);
     }
-    shared_handle = dlopen("./libdetect.so", RTLD_LAZY); // causes odr violation
-    if (shared_handle == NULL) {
-        fprintf(stderr, "Error opening shared library: %s\n", dlerror());
-        exit(EXIT_FAILURE);
-    }
-    dlerror();
-    shellcode_data_dlopen = dlsym(shared_handle, "shellcode_data_dlopen");
-    dlerror_ret = dlerror();
-    if (dlerror_ret != NULL) {
-        fprintf(stderr, "Error loading symbol from shared library: %s\n",
-                dlerror_ret);
-        exit(EXIT_FAILURE);
-    }
-    dlerror();
-    shellcode_bss_dlopen = dlsym(shared_handle, "shellcode_bss_dlopen");
-    dlerror_ret = dlerror();
-    if (dlerror_ret != NULL) {
-        fprintf(stderr, "Error loading symbol from shared library: %s\n",
-                dlerror_ret);
-        exit(EXIT_FAILURE);
-    }
-    memcpy(shellcode_stack, SHELLCODE, SHELLCODE_SIZE);
-    memcpy(shellcode_heap, SHELLCODE, SHELLCODE_SIZE);
-    memcpy(shellcode_bss, SHELLCODE, SHELLCODE_SIZE);
-    memcpy(shellcode_bss_dlopen, SHELLCODE, SHELLCODE_SIZE);
     memcpy(shellcode_mmap, SHELLCODE, SHELLCODE_SIZE);
-
-    // Run the tests on the various shellcode buffers
-    result = true;
-    result &= detect("stack segment execution prevention",
-            test_exec, shellcode_stack);
-    result &= detect("heap segment execution prevention",
-            test_exec, shellcode_heap);
-    result &= detect("data segment execution prevention",
-            test_exec, shellcode_data);
-    result &= detect("bss segment execution prevention",
-            test_exec, shellcode_bss);
-    result &= detect("dlopen()'ed data segment execution prevention",
-            test_exec, shellcode_data_dlopen);
-    result &= detect("dlopen()'ed bss segment execution prevention",
-            test_exec, shellcode_bss_dlopen);
-    result &= detect("mmap()'ed segment execution prevention",
-            test_exec, shellcode_mmap);
-    result &= detect("stack segment mprotect() restrictions",
-            test_mprotect, shellcode_stack);
-    result &= detect("heap segment mprotect() restrictions",
-            test_mprotect, shellcode_heap);
-    result &= detect("data segment mprotect() restrictions",
-            test_mprotect, shellcode_data);
-    result &= detect("bss segment mprotect() restrictions",
-            test_mprotect, shellcode_bss);
-    result &= detect("dlopen()'ed data segment mprotect() restrictions",
-            test_mprotect, shellcode_data_dlopen);
-    result &= detect("dlopen()'ed bss segment mprotect() restrictions",
-            test_mprotect, shellcode_bss_dlopen);
-    result &= detect("mmap()'ed segment mprotect() restrictions",
-            test_mprotect, shellcode_mmap);
-
-    // Tear down the various shellcode buffers
-    free(shellcode_heap);
+    result = fork_and_test(detect, shellcode_mmap);
     ret = munmap(shellcode_mmap, SHELLCODE_SIZE);
     if (ret == -1) {
         perror("Error unmapping memory");
         exit(EXIT_FAILURE);
     }
-    ret = dlclose(shared_handle);
-    if (ret != 0) {
-        fprintf(stderr, "Error closing shared library: %s\n", dlerror());
-        exit(EXIT_FAILURE);
-    }
-
-    // Return the result
     return result;
 }

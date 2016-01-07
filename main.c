@@ -76,11 +76,53 @@ static void get_opts(int argc, char **argv)
     }
 }
 
+static bool display(bool result, const char *label)
+{
+    int ret;
+
+    ret = printf("%s: %s\n", result ? "PASS" : "FAIL", label);
+    if (ret < 0) {
+        perror("Error printing results");
+        exit(EXIT_FAILURE);
+    }
+    return result;
+}
+
 int main(int argc, char **argv)
 {
     bool result;
 
     get_opts(argc, argv);
-    result = detect_all(opts.opt_rng_seed ? &opts.arg_rng_seed : NULL);
+    setup_detections(opts.opt_rng_seed ? &opts.arg_rng_seed : NULL);
+    result = true;
+    result &= display(test_stack(detect_exec_prevent),
+            "Stack segment execution prevention");
+    result &= display(test_heap(detect_exec_prevent),
+            "Heap segment execution prevention");
+    result &= display(test_data(detect_exec_prevent),
+            "Data segment execution prevention");
+    result &= display(test_bss(detect_exec_prevent),
+            "BSS segment execution prevention");
+    result &= display(test_shlib_data(detect_exec_prevent),
+            "Shared library data segment execution prevention");
+    result &= display(test_shlib_bss(detect_exec_prevent),
+            "Shared library BSS segment execution prevention");
+    result &= display(test_mmap(detect_exec_prevent),
+            "Memory mapped page execution prevention");
+    result &= display(test_stack(detect_mprotect_restrict),
+            "Stack segment mprotect() restrictions");
+    result &= display(test_heap(detect_mprotect_restrict),
+            "Heap segment mprotect() restrictions");
+    result &= display(test_data(detect_mprotect_restrict),
+            "Data segment mprotect() restrictions");
+    result &= display(test_bss(detect_mprotect_restrict),
+            "BSS segment mprotect() restrictions");
+    result &= display(test_shlib_data(detect_mprotect_restrict),
+            "Shared library data segment mprotect() restrictions");
+    result &= display(test_shlib_bss(detect_mprotect_restrict),
+            "Shared library BSS segment mprotect() restrictions");
+    result &= display(test_mmap(detect_mprotect_restrict),
+            "Memory mapped page mprotect() restrictions");
+    teardown_detections();
     return result ? EXIT_SUCCESS : EXIT_FAILURE;
 }
