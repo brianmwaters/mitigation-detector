@@ -25,9 +25,9 @@ Currently, mitigation-detector detects execution prevention and mprotect()
 restrictions for the following program segments:
 - stack
 - heap
-- data and bss
+- data, rodata and bss
 - mapped memory
-- data and bss from shared libraries
+- data, rodata and bss from shared libraries
 on i386 and x86-64 Linux.
 
 #### How does one use it?
