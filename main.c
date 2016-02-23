@@ -99,10 +99,14 @@ int main(int argc, char **argv)
             "Stack segment execution prevention");
     result &= display(test_heap(detect_exec_prevent),
             "Heap segment execution prevention");
+    result &= display(test_rodata(detect_exec_prevent),
+            "Rodata segment execution prevention");
     result &= display(test_data(detect_exec_prevent),
             "Data segment execution prevention");
     result &= display(test_bss(detect_exec_prevent),
             "BSS segment execution prevention");
+    result &= display(test_shlib_rodata(detect_exec_prevent),
+            "Shared library rodata segment execution prevention");
     result &= display(test_shlib_data(detect_exec_prevent),
             "Shared library data segment execution prevention");
     result &= display(test_shlib_bss(detect_exec_prevent),

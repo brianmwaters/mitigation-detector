@@ -11,8 +11,10 @@ bool detect_mprotect_restrict(const char *shellcode);
 
 bool test_stack(bool detect(const char *));
 bool test_heap(bool detect(const char *));
+bool test_rodata(bool detect(const char *));
 bool test_data(bool detect(const char *));
 bool test_bss(bool detect(const char *));
+bool test_shlib_rodata(bool detect(const char *));
 bool test_shlib_data(bool detect(const char *));
 bool test_shlib_bss(bool detect(const char *));
 bool test_mmap(bool detect(const char *));

@@ -30,8 +30,10 @@ static size_t pagesize;
 static void *libdetect_handle;
 
 // TODO: Compilers aren't guaranteed to Do What You Mean here
+static const char shellcode_rodata[SHELLCODE_SIZE] = SHELLCODE;
 static char shellcode_data[SHELLCODE_SIZE] = SHELLCODE;
 static char shellcode_bss[SHELLCODE_SIZE];
+const char shellcode_rodata_dlopen[SHELLCODE_SIZE] = SHELLCODE;
 char shellcode_data_dlopen[SHELLCODE_SIZE] = SHELLCODE;
 char shellcode_bss_dlopen[SHELLCODE_SIZE];
 
@@ -216,6 +218,11 @@ bool test_heap(bool detect(const char *))
     return result;
 }
 
+bool test_rodata(bool detect(const char *))
+{
+    return fork_and_test(detect, shellcode_rodata);
+}
+
 bool test_data(bool detect(const char *))
 {
     return fork_and_test(detect, shellcode_data);
@@ -225,6 +232,22 @@ bool test_bss(bool detect(const char *))
 {
     memcpy(shellcode_bss, SHELLCODE, SHELLCODE_SIZE);
     return fork_and_test(detect, shellcode_bss);
+}
+
+bool test_shlib_rodata(bool detect(const char *))
+{
+    char *shellcode_rodata_dlopen;
+    char *dlerror_ret;
+
+    dlerror();
+    shellcode_rodata_dlopen = dlsym(libdetect_handle, "shellcode_rodata_dlopen");
+    dlerror_ret = dlerror();
+    if (dlerror_ret != NULL) {
+        fprintf(stderr, "Error loading symbol from shared library: %s\n",
+                dlerror_ret);
+        exit(EXIT_FAILURE);
+    }
+    return fork_and_test(detect, shellcode_rodata_dlopen);
 }
 
 bool test_shlib_data(bool detect(const char *))
