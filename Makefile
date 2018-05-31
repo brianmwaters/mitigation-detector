@@ -1,7 +1,7 @@
 SH = /bin/sh
 
-.PREFIX:
-.PREFIX: .o .c
+.SUFFIXES:
+.SUFFIXES: .o .c
 
 CC = clang
 CFLAGS = -std=gnu99 -Wall -Wextra -g3 -O3 -fPIC
